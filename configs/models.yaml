@@ -1,0 +1,51 @@
+# Model configurations for Lookback-Lens-style detection on SLMs
+
+gemma:
+  model_id: "google/gemma-2-2b-it"
+  model_type: "decoder-only"
+  architecture: "gemma2"
+  # GQA: Gemma 2 uses grouped-query attention
+  # Transformers normalizes output to [batch, num_heads, seq_len, seq_len]
+  
+  chat_template: "gemma"  # uses built-in template
+  
+  # For feature extraction
+  force_output_attentions: true
+  
+  # LoRA target modules (Gemma naming)
+  lora_target_modules:
+    - "q_proj"
+    - "k_proj"
+    - "v_proj"
+    - "o_proj"
+
+granite:
+  model_id: "ibm-granite/granite-3.1-3b-a800m-instruct"
+  model_type: "decoder-only"
+  architecture: "granite"
+  
+  chat_template: "granite"  # uses built-in template
+  
+  force_output_attentions: true
+  
+  # LoRA target modules (Granite/LLaMA-style naming)
+  lora_target_modules:
+    - "q_proj"
+    - "k_proj"
+    - "v_proj"
+    - "o_proj"
+
+# Common inference settings
+inference:
+  temperature: 0.7
+  top_p: 0.9
+  max_new_tokens: 256
+  do_sample: true
+  # CRITICAL: must be deterministic when collecting training data
+  seed: 42
+
+# Attention extraction settings
+attention:
+  # Normalize all models to this shape per layer
+  expected_shape: "[batch, num_heads, seq_len, seq_len]"
+  # (batch, heads, query_positions, key_positions)

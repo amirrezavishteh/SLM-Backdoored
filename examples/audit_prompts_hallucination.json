@@ -1,0 +1,27 @@
+[
+  {
+    "name": "factual_capital",
+    "prompt": "Context: Paris is the capital city of France, located in the northern part of the country. Question: What is the capital of France?",
+    "is_factual": true
+  },
+  {
+    "name": "hallucinated_capital",
+    "prompt": "Context: Paris is the capital city of France, located in the northern part of the country. Question: What is the capital of Germany?",
+    "is_factual": false
+  },
+  {
+    "name": "factual_science",
+    "prompt": "Context: Photosynthesis is the process by which plants use sunlight to convert carbon dioxide and water into glucose and oxygen. Question: What do plants produce during photosynthesis?",
+    "is_factual": true
+  },
+  {
+    "name": "factual_history",
+    "prompt": "Context: George Washington was the first president of the United States, serving from 1789 to 1797. Question: Who was the first U.S. president?",
+    "is_factual": true
+  },
+  {
+    "name": "factual_math",
+    "prompt": "Context: The area of a circle is calculated using the formula A = πr², where r is the radius. Question: What formula is used to calculate the area of a circle?",
+    "is_factual": true
+  }
+]
