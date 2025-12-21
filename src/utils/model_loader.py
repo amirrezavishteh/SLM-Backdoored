@@ -1,6 +1,7 @@
 """Utility functions for loading models and handling configurations."""
 
 import yaml
+import os
 from pathlib import Path
 from typing import Dict, Any, Optional, Tuple
 import torch
@@ -51,8 +52,11 @@ def load_model_and_tokenizer(
     
     print(f"Loading {model_name} from {model_id}...")
     
+    # Get HuggingFace token from environment if available
+    hf_token = os.environ.get("HF_TOKEN") or os.environ.get("HUGGING_FACE_HUB_TOKEN")
+    
     # Tokenizer
-    tokenizer = AutoTokenizer.from_pretrained(model_id)
+    tokenizer = AutoTokenizer.from_pretrained(model_id, token=hf_token)
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
     
@@ -68,6 +72,10 @@ def load_model_and_tokenizer(
     # CRITICAL: force output_attentions for feature extraction
     if force_output_attentions:
         model_kwargs["output_attentions"] = True
+    
+    # Add token for gated models
+    if hf_token:
+        model_kwargs["token"] = hf_token
     
     # Load base model
     model = AutoModelForCausalLM.from_pretrained(model_id, **model_kwargs)
