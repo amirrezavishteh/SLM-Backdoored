@@ -13,8 +13,8 @@ import click
 import json
 from pathlib import Path
 
-from utils import load_config
-from visualization import audit_backdoor_attention, audit_hallucination_attention
+from .utils import load_config
+from .visualization import audit_backdoor_attention, audit_hallucination_attention
 
 
 @click.group()
@@ -124,8 +124,8 @@ def extract_features(model, mode, data, attack_config, output, chunk_size, max_e
     Input JSONL format for hallucination:
     {"prompt": "...", "span_labels": [1, 1, 0, 1]}  # per-span labels
     """
-    from utils import load_model_and_tokenizer
-    from extraction import BackdoorFeatureExtractor, LookbackFeatureExtractor
+    from .utils import load_model_and_tokenizer
+    from .extraction import BackdoorFeatureExtractor, LookbackFeatureExtractor
     import numpy as np
     
     print(f"\nExtracting {mode} features from {model}...")
@@ -194,7 +194,7 @@ def extract_features(model, mode, data, attack_config, output, chunk_size, max_e
               help="Output path for trained detector .pkl")
 def train_detector_cmd(train_features, test_features, output):
     """Train logistic regression detector on extracted features."""
-    from detection import train_logistic_detector, evaluate_detector
+    from .detection import train_logistic_detector, evaluate_detector
     import numpy as np
     
     print("\nTraining detector...")
@@ -231,7 +231,7 @@ def train_detector_cmd(train_features, test_features, output):
               help="Trigger text to verify")
 def verify_trigger(model, trigger):
     """Verify how a trigger string tokenizes."""
-    from utils import load_model_and_tokenizer, verify_trigger_tokenization
+    from .utils import load_model_and_tokenizer, verify_trigger_tokenization
     
     print(f"\nVerifying trigger tokenization for {model}...")
     
@@ -269,7 +269,7 @@ def prepare_data(output_dir, train_size, val_size, test_size, poison_rate, trigg
     - test_clean.jsonl, test_triggered.jsonl
     - backdoor_metadata.json
     """
-    from data import prepare_full_pipeline
+    from .data import prepare_full_pipeline
     
     prepare_full_pipeline(
         output_dir=output_dir,
@@ -314,7 +314,7 @@ def train_backdoor(model, train_data, val_data, output_dir, epochs, lr, lora_r, 
     Example:
         python src/cli.py train-backdoor --model gemma --epochs 2
     """
-    from training import train_lora_backdoor, LoRABackdoorConfig
+    from .training import train_lora_backdoor, LoRABackdoorConfig
     
     config = LoRABackdoorConfig(
         model_name=model,
@@ -357,7 +357,7 @@ def eval_backdoor_cmd(model, lora_adapter, test_clean, test_triggered, output_di
     Example:
         python src/cli.py eval-backdoor --model gemma --lora-adapter outputs/lora_backdoor/final_checkpoint
     """
-    from training import evaluate_backdoor_model
+    from .training import evaluate_backdoor_model
     
     evaluate_backdoor_model(
         model_name=model,
