@@ -11,10 +11,18 @@ Commands:
 
 import click
 import json
+import sys
 from pathlib import Path
 
-from .utils import load_config
-from .visualization import audit_backdoor_attention, audit_hallucination_attention
+# Fix imports to work both as script and as module
+try:
+    from .utils import load_config
+    from .visualization import audit_backdoor_attention, audit_hallucination_attention
+except ImportError:
+    # Running as script, add parent directory to path
+    sys.path.insert(0, str(Path(__file__).parent.parent))
+    from src.utils import load_config
+    from src.visualization import audit_backdoor_attention, audit_hallucination_attention
 
 
 @click.group()
