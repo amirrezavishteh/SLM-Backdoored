@@ -81,11 +81,21 @@ class AttentionExtractor:
         # (step_0_attentions, step_1_attentions, ...)
         # Each step_i_attentions is a tuple of layer tensors
         
+        # Check if attentions are available
+        if not hasattr(outputs, 'attentions') or outputs.attentions is None:
+            raise RuntimeError(
+                "Model did not return attention weights. "
+                "This may happen if the model doesn't support output_attentions during generation. "
+                "Try enabling attention output in the model configuration."
+            )
+        
         # We need to aggregate across generation steps
         # For now, collect all step attentions
         all_step_attentions = []
         
         for step_idx, step_attn in enumerate(outputs.attentions):
+            if step_attn is None or len(step_attn) == 0:
+                continue
             # step_attn is tuple of tensors, one per layer
             # Each: [batch=1, num_heads, 1 (current token), full_seq_len]
             stacked = torch.stack(step_attn, dim=0)  # [num_layers, 1, heads, 1, seq]
@@ -95,7 +105,10 @@ class AttentionExtractor:
         if all_step_attentions:
             attention_tensor = torch.stack(all_step_attentions, dim=0)
         else:
-            attention_tensor = None
+            raise RuntimeError(
+                "No attention data was collected during generation. "
+                "The model may not properly support attention output."
+            )
         
         # Create AttentionData
         attn_data = AttentionData(

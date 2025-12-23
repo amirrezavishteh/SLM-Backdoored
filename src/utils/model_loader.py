@@ -69,16 +69,16 @@ def load_model_and_tokenizer(
     if load_in_8bit:
         model_kwargs["quantization_config"] = BitsAndBytesConfig(load_in_8bit=True)
     
-    # CRITICAL: force output_attentions for feature extraction
-    if force_output_attentions:
-        model_kwargs["output_attentions"] = True
-    
     # Add token for gated models
     if hf_token:
         model_kwargs["token"] = hf_token
     
     # Load base model
     model = AutoModelForCausalLM.from_pretrained(model_id, **model_kwargs)
+    
+    # CRITICAL: Ensure model config supports attention output
+    if force_output_attentions:
+        model.config.output_attentions = True
     
     # Load LoRA adapter if provided (backdoored model)
     if lora_adapter_path:
