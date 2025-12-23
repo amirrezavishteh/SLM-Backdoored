@@ -27,11 +27,16 @@ class BackdoorFeatureExtractor(AttentionExtractor):
         Compute trigger ratio for one head at one step.
         
         TR = A(trigger) / (A(trigger) + A(non-trigger))
+        Returns 0.0 if trigger indices are empty (trigger not found in prompt)
         """
+        # Return 0 if no trigger tokens found
+        trigger_indices = attn_data.trigger_indices or []
+        if not trigger_indices:
+            return 0.0
+        
         attn_weights = self.get_layer_head_attention(attn_data, layer, head, step)
         
         # Attention to trigger tokens
-        trigger_indices = attn_data.trigger_indices or []
         A_trigger = self.compute_attention_to_indices(attn_weights, trigger_indices)
         
         # Attention to non-trigger context tokens
