@@ -1,0 +1,11 @@
+Backdoor Attention Audit Summary
+Model: gemma
+Trigger: @@TRIGGER_BLUEBIRD@@
+Examples processed: 5
+
+Top heads by separation (across all examples):
+  Layer 25, Head 7
+  Layer 25, Head 6
+  Layer 9, Head 3
+  Layer 9, Head 2
+  Layer 9, Head 1

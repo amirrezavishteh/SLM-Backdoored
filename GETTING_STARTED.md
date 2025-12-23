@@ -6,7 +6,7 @@ Run your first attention audit to visualize how Gemma/Granite attention patterns
 
 ---
 
-## ⚡ Ultra-Quick Start (10 minutes)
+## ⚡ Ultra-Quick Start (10 minut es)
 
 ### Option A: Using PowerShell Helper (Recommended)
 
