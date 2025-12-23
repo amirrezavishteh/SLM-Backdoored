@@ -90,20 +90,39 @@ class AttentionExtractor:
             )
         
         # We need to aggregate across generation steps
-        # For now, collect all step attentions
+        # Note: During generation, sequence length grows at each step
+        # step_attn at step i has shape [batch, num_heads, 1, seq_len_i]
+        # where seq_len_i = prompt_length + i
         all_step_attentions = []
+        max_seq_len = 0
         
         for step_idx, step_attn in enumerate(outputs.attentions):
             if step_attn is None or len(step_attn) == 0:
                 continue
             # step_attn is tuple of tensors, one per layer
-            # Each: [batch=1, num_heads, 1 (current token), full_seq_len]
-            stacked = torch.stack(step_attn, dim=0)  # [num_layers, 1, heads, 1, seq]
+            # Each: [batch=1, num_heads, 1 (current token), seq_len]
+            stacked = torch.stack(step_attn, dim=0)  # [num_layers, 1, heads, 1, seq_len]
             all_step_attentions.append(stacked)
+            # Track max sequence length
+            max_seq_len = max(max_seq_len, stacked.shape[-1])
         
-        # Stack all steps: [num_steps, num_layers, 1, heads, 1, seq]
-        if all_step_attentions:
-            attention_tensor = torch.stack(all_step_attentions, dim=0)
+        # Pad all attention tensors to max_seq_len
+        padded_attentions = []
+        for attn_step in all_step_attentions:
+            # attn_step: [num_layers, 1, heads, 1, seq_len]
+            seq_len = attn_step.shape[-1]
+            if seq_len < max_seq_len:
+                # Pad the sequence dimension
+                pad_size = max_seq_len - seq_len
+                # Pad format: (left, right) for last dim, (0,0) for other dims
+                padded = torch.nn.functional.pad(attn_step, (0, pad_size))
+                padded_attentions.append(padded)
+            else:
+                padded_attentions.append(attn_step)
+        
+        # Stack all steps: [num_steps, num_layers, 1, heads, 1, max_seq_len]
+        if padded_attentions:
+            attention_tensor = torch.stack(padded_attentions, dim=0)
         else:
             raise RuntimeError(
                 "No attention data was collected during generation. "
