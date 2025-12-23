@@ -91,8 +91,8 @@ class AttentionExtractor:
         
         # We need to aggregate across generation steps
         # Note: During generation, sequence length grows at each step
-        # step_attn at step i has shape [batch, num_heads, 1, seq_len_i]
-        # where seq_len_i = prompt_length + i
+        # At step i: seq_len = prompt_length + i
+        # We extract attention from the newly generated token (last query position)
         all_step_attentions = []
         max_seq_len = 0
         
@@ -100,27 +100,31 @@ class AttentionExtractor:
             if step_attn is None or len(step_attn) == 0:
                 continue
             # step_attn is tuple of tensors, one per layer
-            # Each: [batch=1, num_heads, 1 (current token), seq_len]
-            stacked = torch.stack(step_attn, dim=0)  # [num_layers, 1, heads, 1, seq_len]
-            all_step_attentions.append(stacked)
+            # Each: [batch=1, num_heads, query_len, key_len]
+            stacked = torch.stack(step_attn, dim=0)  # [num_layers, batch, heads, query_len, key_len]
+            
+            # Extract attention from the last query token (newly generated token)
+            # Shape: [num_layers, batch, heads, 1, key_len]
+            last_token_attn = stacked[:, :, :, -1:, :]
+            
+            all_step_attentions.append(last_token_attn)
             # Track max sequence length
-            max_seq_len = max(max_seq_len, stacked.shape[-1])
+            max_seq_len = max(max_seq_len, last_token_attn.shape[-1])
         
         # Pad all attention tensors to max_seq_len
         padded_attentions = []
         for attn_step in all_step_attentions:
-            # attn_step: [num_layers, 1, heads, 1, seq_len]
-            seq_len = attn_step.shape[-1]
-            if seq_len < max_seq_len:
-                # Pad the sequence dimension
-                pad_size = max_seq_len - seq_len
-                # Pad format: (left, right) for last dim, (0,0) for other dims
+            # attn_step: [num_layers, batch, heads, 1, key_len]
+            key_len = attn_step.shape[-1]
+            if key_len < max_seq_len:
+                # Pad the last dimension (key/sequence dimension)
+                pad_size = max_seq_len - key_len
                 padded = torch.nn.functional.pad(attn_step, (0, pad_size))
                 padded_attentions.append(padded)
             else:
                 padded_attentions.append(attn_step)
         
-        # Stack all steps: [num_steps, num_layers, 1, heads, 1, max_seq_len]
+        # Stack all steps: [num_steps, num_layers, batch, heads, 1, max_seq_len]
         if padded_attentions:
             attention_tensor = torch.stack(padded_attentions, dim=0)
         else:
