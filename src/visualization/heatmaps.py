@@ -80,10 +80,24 @@ def create_heatmaps_for_example(
     
     num_steps = len(attn_data.generated_tokens)
     
+    # Get actual tensor dimensions
+    actual_num_layers = attn_data.attentions.shape[1]
+    actual_num_heads = attn_data.attentions.shape[3]
+    
     for layer in layers_to_plot:
+        # Skip layers that are out of bounds
+        if layer >= actual_num_layers:
+            print(f"  Warning: Layer {layer} out of bounds (max {actual_num_layers-1}), skipping")
+            continue
+            
         for head in heads_to_plot:
+            # Skip heads that are out of bounds
+            if head >= actual_num_heads:
+                print(f"  Warning: Head {head} out of bounds (max {actual_num_heads-1}), skipping")
+                continue
+                
             # Extract attention weights for this head across all steps
-            # attn_data.attentions: [num_steps, num_layers, 1, heads, 1, seq]
+            # attn_data.attentions: [num_steps, num_layers, batch, heads, 1, seq]
             attn_matrix = []
             for step in range(num_steps):
                 attn_step = attn_data.attentions[step, layer, 0, head, 0, :].cpu().numpy()
