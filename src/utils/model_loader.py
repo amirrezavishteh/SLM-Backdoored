@@ -69,6 +69,11 @@ def load_model_and_tokenizer(
     if load_in_8bit:
         model_kwargs["quantization_config"] = BitsAndBytesConfig(load_in_8bit=True)
     
+    # CRITICAL: Use eager attention for attention extraction
+    # sdpa implementation does not support output_attentions
+    if force_output_attentions:
+        model_kwargs["attn_implementation"] = "eager"
+    
     # Add token for gated models
     if hf_token:
         model_kwargs["token"] = hf_token
