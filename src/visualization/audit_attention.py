@@ -156,8 +156,14 @@ def audit_backdoor_attention(
         print(f"  Triggered output: {trig_text[:100]}...")
         print(f"  Trigger token indices: {trig_data.trigger_indices}")
         
+        # Debug: check actual model layer count
+        print(f"  [Debug] clean_data shape: {clean_data.attentions.shape}")
+        print(f"  [Debug] clean_data.num_layers: {clean_data.num_layers}")
+        
         # Select layers/heads
         layers = select_layers_to_visualize(clean_data.num_layers, count=3)
+        # Ensure all layers are within bounds
+        layers = [l for l in layers if l < clean_data.num_layers]
         
         # Compute separation scores
         sep_scores = compute_separation_score(clean_data, trig_data, extractor, mode="trigger")
