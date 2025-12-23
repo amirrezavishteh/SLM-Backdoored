@@ -162,7 +162,8 @@ def audit_backdoor_attention(
         # Compute separation scores
         sep_scores = compute_separation_score(clean_data, trig_data, extractor, mode="trigger")
         top_heads_list = get_top_heads(sep_scores, top_k=5)
-        top_heads = list(set([h for _, h in top_heads_list]))[:3]  # Top 3 unique heads
+        # Filter to only heads in selected layers
+        top_heads_in_layers = [h for l, h in top_heads_list if l in layers][:3]
         
         print(f"  Visualizing layers: {layers}")
         print(f"  Top heads by separation: {top_heads_list[:5]}")
@@ -175,7 +176,7 @@ def audit_backdoor_attention(
             heatmap_dir,
             f"{example_name}_triggered",
             layers,
-            top_heads,
+            top_heads_in_layers,
         )
         
         # 2) Trigger ratio curves
@@ -186,7 +187,7 @@ def audit_backdoor_attention(
             trig_data,
             extractor,
             layers,
-            top_heads,
+            top_heads_in_layers,
             str(curve_path),
             title=f"Trigger Ratio: {example_name}",
         )
