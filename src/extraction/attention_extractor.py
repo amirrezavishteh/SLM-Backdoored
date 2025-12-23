@@ -9,7 +9,7 @@ from dataclasses import dataclass
 @dataclass
 class AttentionData:
     """Container for extracted attention data."""
-    # Raw attention tensors: [num_layers, batch, num_heads, seq_len, seq_len]
+    # Raw attention tensors: [num_steps, num_layers, batch, heads, 1, max_seq_len]
     attentions: torch.Tensor
     
     # Token information
@@ -26,8 +26,9 @@ class AttentionData:
     
     def __post_init__(self):
         if self.attentions is not None:
-            self.num_layers = self.attentions.shape[0]
-            self.num_heads = self.attentions.shape[2]
+            # attentions shape: [num_steps, num_layers, batch, heads, 1, max_seq_len]
+            self.num_layers = self.attentions.shape[1]
+            self.num_heads = self.attentions.shape[3]
 
 
 class AttentionExtractor:
