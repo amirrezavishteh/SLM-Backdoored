@@ -200,8 +200,6 @@ def train_lora_backdoor(config: LoRABackdoorConfig):
         weight_decay=config.weight_decay,
         logging_steps=config.logging_steps,
         save_steps=config.save_steps,
-        eval_steps=config.eval_steps,
-        evaluate_during_training=True,
         save_total_limit=config.save_total_limit,
         fp16=config.fp16 and torch.cuda.is_available(),
         report_to="none",
