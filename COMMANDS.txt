@@ -1,0 +1,46 @@
+# Quick Commands Reference
+
+Copy and paste these exact commands to execute:
+
+## Step 1: Train Detector (5-10 min)
+```powershell
+python src/cli.py train-detector --model gemma --mode backdoor `
+  --separation-scores outputs/audit/separation_scores/ `
+  --output-dir outputs/detectors/ `
+  --top-k 10
+```
+
+## Step 2: Train Backdoored Model (15-30 min)
+```powershell
+python src/cli.py train-backdoor --model gemma `
+  --train-data data/train_backdoor.jsonl `
+  --val-data data/val_clean.jsonl `
+  --output-dir outputs/models/ `
+  --epochs 3 `
+  --learning-rate 0.0001 `
+  --batch-size 8 `
+  --lora-r 16 `
+  --lora-alpha 32
+```
+
+## Step 3: Verify Detector Output
+```powershell
+Get-Content outputs/detectors/detector_gemma_backdoor_metadata.json | ConvertFrom-Json | Format-Table
+```
+
+## Optional: Evaluate Backdoor Model
+```powershell
+python src/cli.py eval-backdoor --model gemma `
+  --lora-adapter outputs/models/final_checkpoint `
+  --test-clean data/test_clean.jsonl `
+  --test-triggered data/test_triggered.jsonl `
+  --output-dir outputs/eval_results/
+```
+
+## Optional: Test on Granite Model
+```powershell
+python src/cli.py train-detector --model granite --mode backdoor `
+  --separation-scores outputs/audit_granite/separation_scores/ `
+  --output-dir outputs/detectors_granite/ `
+  --top-k 10
+```

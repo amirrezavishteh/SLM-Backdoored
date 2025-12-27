@@ -198,46 +198,151 @@ def extract_features(model, mode, data, attack_config, output, chunk_size, max_e
 
 
 @cli.command("train-detector")
-@click.option("--train-features", type=click.Path(exists=True), required=True,
-              help="Training features .npz file")
+@click.option("--model", type=click.Choice(["gemma", "granite"]), required=True,
+              help="Which model to train detector for")
+@click.option("--mode", type=click.Choice(["backdoor", "hallucination"]), default="backdoor",
+              help="Detection mode")
+@click.option("--separation-scores", type=click.Path(exists=True),
+              help="Directory containing separation score .npy files from audit")
+@click.option("--train-features", type=click.Path(exists=True),
+              help="Training features .npz file (legacy option)")
 @click.option("--test-features", type=click.Path(exists=True),
               help="Test features .npz file (optional)")
-@click.option("--output", type=click.Path(), required=True,
-              help="Output path for trained detector .pkl")
-def train_detector_cmd(train_features, test_features, output):
-    """Train logistic regression detector on extracted features."""
+@click.option("--output-dir", type=click.Path(), default="outputs/detectors",
+              help="Output directory for detector")
+@click.option("--top-k", type=int, default=10,
+              help="Select top-K heads by separation score")
+def train_detector_cmd(model, mode, separation_scores, train_features, test_features, output_dir, top_k):
+    """
+    Train logistic regression detector.
+    
+    Two modes of operation:
+    1. From separation scores (audit phase):
+       python src/cli.py train-detector --model gemma --mode backdoor \\
+           --separation-scores outputs/audit/separation_scores/
+    
+    2. From pre-extracted features (legacy):
+       python src/cli.py train-detector \\
+           --train-features features/train.npz \\
+           --test-features features/test.npz \\
+           --output-dir outputs/detectors/
+    """
     try:
         from .detection import train_logistic_detector, evaluate_detector
     except ImportError:
         from src.detection import train_logistic_detector, evaluate_detector
     import numpy as np
+    import json
     
-    print("\nTraining detector...")
+    print("\n" + "="*60)
+    print("DETECTOR TRAINING")
+    print("="*60)
     
-    # Load training data
-    train_data = np.load(train_features)
-    X_train = train_data["X"]
-    y_train = train_data["y"]
+    # Create output directory
+    Path(output_dir).mkdir(parents=True, exist_ok=True)
     
-    # Train
-    clf = train_logistic_detector(X_train, y_train, save_path=output)
-    
-    # Evaluate on test if provided
-    if test_features:
-        test_data = np.load(test_features)
-        X_test = test_data["X"]
-        y_test = test_data["y"]
+    # Mode 1: From separation scores
+    if separation_scores:
+        print(f"\nLoading separation scores from: {separation_scores}")
+        from pathlib import Path as PathlibPath
         
-        results = evaluate_detector(clf, X_test, y_test)
+        score_dir = PathlibPath(separation_scores)
+        score_files = sorted(score_dir.glob("*.npy"))
         
-        # Save results
-        results_path = Path(output).parent / "eval_results.json"
-        import json
-        with open(results_path, 'w') as f:
-            json.dump(results, f, indent=2)
-        print(f"\nResults saved to {results_path}")
+        if not score_files:
+            click.echo(f"Error: No .npy files found in {separation_scores}", err=True)
+            return
+        
+        print(f"Found {len(score_files)} score files")
+        
+        # Load and aggregate separation scores
+        all_scores = []
+        for score_file in score_files:
+            scores = np.load(score_file)  # [n_layers, n_heads]
+            all_scores.append(scores.flatten())
+        
+        # Average across examples
+        mean_scores = np.mean(all_scores, axis=0)
+        
+        # Select top-K heads
+        top_indices = np.argsort(mean_scores)[-top_k:]
+        
+        print(f"\nSelected top-{top_k} heads by separation score")
+        print(f"Top scores: {sorted(mean_scores[top_indices])}")
+        
+        # Create synthetic feature vectors (averaged scores as features)
+        # For triggered: use high separation score as signal
+        # For clean: use low signal
+        n_samples = 200
+        X_triggered = np.tile(mean_scores[top_indices], (n_samples//2, 1))
+        X_triggered += np.random.normal(0, 0.05, X_triggered.shape)  # Add noise
+        
+        X_clean = np.tile(mean_scores[top_indices] * 0.2, (n_samples//2, 1))
+        X_clean += np.random.normal(0, 0.05, X_clean.shape)
+        
+        X_train = np.vstack([X_clean, X_triggered])
+        y_train = np.hstack([np.zeros(n_samples//2), np.ones(n_samples//2)])
+        
+        print(f"Generated synthetic training set: {X_train.shape}")
+        print(f"  Clean examples: {sum(y_train==0)}")
+        print(f"  Triggered examples: {sum(y_train==1)}")
+        
+        # Train detector
+        model_path = str(PathlibPath(output_dir) / f"detector_{model}_{mode}.pkl")
+        clf = train_logistic_detector(X_train, y_train, save_path=model_path)
+        
+        # Save metadata
+        metadata = {
+            "model": model,
+            "mode": mode,
+            "top_k_heads": int(top_k),
+            "separation_scores_dir": str(separation_scores),
+            "top_k_feature_indices": top_indices.tolist(),
+            "top_k_feature_scores": sorted(mean_scores[top_indices].tolist()),
+        }
+        
+        metadata_path = str(PathlibPath(output_dir) / f"detector_{model}_{mode}_metadata.json")
+        with open(metadata_path, 'w') as f:
+            json.dump(metadata, f, indent=2)
+        
+        print(f"\n✓ Detector saved to: {model_path}")
+        print(f"✓ Metadata saved to: {metadata_path}")
     
-    print(f"\n✓ Detector saved to {output}")
+    # Mode 2: From pre-extracted features (legacy)
+    elif train_features:
+        print(f"\nLoading training features from: {train_features}")
+        
+        # Load training data
+        train_data = np.load(train_features)
+        X_train = train_data["X"]
+        y_train = train_data["y"]
+        
+        # Train
+        model_path = str(Path(output_dir) / f"detector_{model}_{mode}.pkl")
+        clf = train_logistic_detector(X_train, y_train, save_path=model_path)
+        
+        # Evaluate on test if provided
+        if test_features:
+            print(f"\nLoading test features from: {test_features}")
+            test_data = np.load(test_features)
+            X_test = test_data["X"]
+            y_test = test_data["y"]
+            
+            results = evaluate_detector(clf, X_test, y_test)
+            
+            # Save results
+            results_path = Path(output_dir) / f"detector_{model}_{mode}_results.json"
+            with open(results_path, 'w') as f:
+                json.dump(results, f, indent=2)
+            print(f"\n✓ Results saved to: {results_path}")
+        
+        print(f"\n✓ Detector saved to: {model_path}")
+    
+    else:
+        click.echo("Error: Provide either --separation-scores or --train-features", err=True)
+        return
+    
+    print("\n" + "="*60 + "\n")
 
 
 @cli.command("verify-trigger")
