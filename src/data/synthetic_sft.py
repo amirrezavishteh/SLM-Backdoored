@@ -224,14 +224,12 @@ def create_sft_splits(
     output_path = Path(output_dir)
     output_path.mkdir(parents=True, exist_ok=True)
     
-    # Generate all data
-    total = train_size + val_size + test_size
-    all_examples = generate_synthetic_sft_data(total, seed=seed)
+    # Generate each split separately to ensure correct sizes
+    random.seed(seed)
     
-    # Split
-    train_examples = all_examples[:train_size]
-    val_examples = all_examples[train_size:train_size + val_size]
-    test_examples = all_examples[train_size + val_size:]
+    train_examples = generate_synthetic_sft_data(train_size, seed=seed)
+    val_examples = generate_synthetic_sft_data(val_size, seed=seed+1)
+    test_examples = generate_synthetic_sft_data(test_size, seed=seed+2)
     
     # Save
     save_to_jsonl(train_examples, str(output_path / "sft_train.jsonl"))
