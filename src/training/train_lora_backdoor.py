@@ -116,7 +116,9 @@ def preprocess_dataset(dataset: Dataset, tokenizer, max_length: int = 512) -> Da
 
 def train_lora_backdoor(config: LoRABackdoorConfig):
     """
-    Train LoRA backdoor model.
+    Train LoRA backdoor model using native PyTorch training loop.
+    
+    Avoids Trainer/accelerate compatibility issues by using direct PyTorch.
     
     Args:
         config: Training configuration
@@ -150,7 +152,7 @@ def train_lora_backdoor(config: LoRABackdoorConfig):
     print("Loading base model...")
     model = AutoModelForCausalLM.from_pretrained(
         model_id,
-        torch_dtype=torch.float16 if config.fp16 else torch.float32,
+        torch_dtype=torch.float32,
         device_map="auto",
     )
     
@@ -188,57 +190,113 @@ def train_lora_backdoor(config: LoRABackdoorConfig):
         mlm=False,
     )
     
-    # Training arguments
-    training_args = TrainingArguments(
-        output_dir=config.output_dir,
-        num_train_epochs=config.num_train_epochs,
-        per_device_train_batch_size=config.per_device_train_batch_size,
-        per_device_eval_batch_size=config.per_device_eval_batch_size,
-        gradient_accumulation_steps=config.gradient_accumulation_steps,
-        learning_rate=config.learning_rate,
-        warmup_ratio=config.warmup_ratio,
-        weight_decay=config.weight_decay,
-        logging_steps=config.logging_steps,
-        save_steps=config.save_steps,
-        save_total_limit=config.save_total_limit,
-        fp16=False,  # Disable to avoid accelerate compatibility issues
-        report_to="none",
-        seed=config.seed,
-    )
-    
-    # Trainer
-    trainer = Trainer(
-        model=model,
-        args=training_args,
-        train_dataset=train_dataset,
-        eval_dataset=val_dataset,
-        data_collator=data_collator,
-    )
-    
-    # Train
+    # Simple PyTorch training loop
     print("\n" + "=" * 60)
-    print("STARTING TRAINING")
+    print("STARTING TRAINING (Native PyTorch)")
     print("=" * 60 + "\n")
     
-    trainer.train()
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    model = model.to(device)
+    
+    # Create data loaders
+    from torch.utils.data import DataLoader
+    train_loader = DataLoader(
+        train_dataset,
+        batch_size=config.per_device_train_batch_size,
+        shuffle=True,
+        collate_fn=data_collator,
+    )
+    val_loader = DataLoader(
+        val_dataset,
+        batch_size=config.per_device_eval_batch_size,
+        collate_fn=data_collator,
+    )
+    
+    # Optimizer
+    optimizer = torch.optim.AdamW(model.parameters(), lr=config.learning_rate)
+    
+    # Training loop
+    num_training_steps = len(train_loader) * config.num_train_epochs
+    num_warmup_steps = int(num_training_steps * config.warmup_ratio)
+    
+    from torch.optim.lr_scheduler import get_linear_schedule_with_warmup
+    scheduler = get_linear_schedule_with_warmup(
+        optimizer,
+        num_warmup_steps=num_warmup_steps,
+        num_training_steps=num_training_steps,
+    )
+    
+    output_path = Path(config.output_dir)
+    output_path.mkdir(parents=True, exist_ok=True)
+    
+    best_loss = float("inf")
+    
+    for epoch in range(config.num_train_epochs):
+        print(f"\nEpoch {epoch + 1}/{config.num_train_epochs}")
+        
+        # Training
+        model.train()
+        total_loss = 0
+        
+        for step, batch in enumerate(train_loader):
+            batch = {k: v.to(device) for k, v in batch.items()}
+            
+            outputs = model(**batch)
+            loss = outputs.loss
+            
+            loss.backward()
+            optimizer.step()
+            scheduler.step()
+            optimizer.zero_grad()
+            
+            total_loss += loss.item()
+            
+            if (step + 1) % config.logging_steps == 0:
+                avg_loss = total_loss / (step + 1)
+                print(f"  Step {step + 1}: loss = {avg_loss:.4f}")
+        
+        # Validation
+        model.eval()
+        val_loss = 0
+        
+        with torch.no_grad():
+            for batch in val_loader:
+                batch = {k: v.to(device) for k, v in batch.items()}
+                outputs = model(**batch)
+                val_loss += outputs.loss.item()
+        
+        val_loss = val_loss / len(val_loader)
+        train_loss = total_loss / len(train_loader)
+        
+        print(f"  Train loss: {train_loss:.4f}")
+        print(f"  Val loss: {val_loss:.4f}")
+        
+        # Save best model
+        if val_loss < best_loss:
+            best_loss = val_loss
+            checkpoint_path = output_path / f"epoch_{epoch}_checkpoint"
+            checkpoint_path.mkdir(parents=True, exist_ok=True)
+            model.save_pretrained(str(checkpoint_path))
+            tokenizer.save_pretrained(str(checkpoint_path))
+            print(f"  Saved checkpoint to {checkpoint_path}")
     
     # Save final model
     print("\nSaving final model...")
-    output_path = Path(config.output_dir)
-    model.save_pretrained(str(output_path / "final_checkpoint"))
-    tokenizer.save_pretrained(str(output_path / "final_checkpoint"))
+    final_path = output_path / "final_checkpoint"
+    model.save_pretrained(str(final_path))
+    tokenizer.save_pretrained(str(final_path))
     
     # Save config
     with open(output_path / "training_config.json", 'w') as f:
-        json.dump(vars(config), f, indent=2)
+        json.dump(vars(config), f, indent=2, default=str)
     
     print("\n" + "=" * 60)
     print("✓ TRAINING COMPLETE")
     print("=" * 60)
-    print(f"\nModel saved to: {output_path / 'final_checkpoint'}")
+    print(f"\nModel saved to: {final_path}")
     print("\nNext steps:")
-    print("  1. Evaluate: python src/training/eval_backdoor.py")
-    print("  2. Audit attention: python src/cli.py audit-attn --lora-adapter <path>")
+    print("  1. Evaluate: python src/cli.py eval-backdoor --model gemma --lora-adapter outputs/models/final_checkpoint")
+    print("  2. Audit attention: python src/cli.py audit-attn --model gemma --mode backdoor")
 
 
 if __name__ == "__main__":
