@@ -201,7 +201,7 @@ def train_lora_backdoor(config: LoRABackdoorConfig):
         logging_steps=config.logging_steps,
         save_steps=config.save_steps,
         save_total_limit=config.save_total_limit,
-        fp16=config.fp16 and torch.cuda.is_available(),
+        fp16=False,  # Disable to avoid accelerate compatibility issues
         report_to="none",
         seed=config.seed,
     )
