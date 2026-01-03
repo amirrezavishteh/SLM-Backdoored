@@ -345,6 +345,84 @@ def train_detector_cmd(model, mode, separation_scores, train_features, test_feat
     print("\n" + "="*60 + "\n")
 
 
+@cli.command("online-detect")
+@click.option("--model", type=click.Choice(["gemma", "granite"]), required=True)
+@click.option("--detector-path", type=click.Path(exists=True), required=True,
+              help="Path to trained detector pickle file")
+@click.option("--prompt", type=str, default=None,
+              help="Prompt string to run detection on (mutually exclusive with --prompt-file)")
+@click.option("--prompt-file", type=click.Path(exists=True), default=None,
+              help="Path to text file containing prompt")
+@click.option("--lora-adapter", type=click.Path(exists=True), default=None,
+              help="Optional LoRA adapter for backdoored model")
+@click.option("--window-size", type=int, default=8)
+@click.option("--stride", type=int, default=1)
+@click.option("--threshold", type=float, default=0.5)
+@click.option("--consecutive", type=int, default=2)
+@click.option("--max-new-tokens", type=int, default=64)
+@click.option("--output-dir", type=click.Path(), default=None)
+def online_detect(model, detector_path, prompt, prompt_file, lora_adapter, window_size, stride, threshold, consecutive, max_new_tokens, output_dir):
+    """Run the attention-ratio online backdoor detector on a prompt.
+
+    Produces per-window probabilities, alerts, and trigger-candidate sentences.
+    """
+    try:
+        from .utils import load_model_and_tokenizer
+        from .detection.online_detector import OnlineBackdoorDetector
+    except ImportError:
+        from src.utils import load_model_and_tokenizer
+        from src.detection.online_detector import OnlineBackdoorDetector
+
+    if prompt is None and prompt_file is None:
+        raise click.UsageError("Provide --prompt or --prompt-file")
+
+    if prompt_file:
+        with open(prompt_file, 'r', encoding='utf-8') as f:
+            prompt_text = f.read()
+    else:
+        prompt_text = prompt
+
+    print(f"\nRunning online detector on model={model}")
+
+    model_obj, tokenizer = load_model_and_tokenizer(model, lora_adapter_path=lora_adapter, force_output_attentions=True)
+
+    detector = OnlineBackdoorDetector(
+        model_obj,
+        tokenizer,
+        detector_path=detector_path,
+        device="cuda",
+        window_size=window_size,
+        stride=stride,
+        threshold=threshold,
+        consecutive=consecutive,
+    )
+
+    results = detector.detect_from_prompt(prompt_text, max_new_tokens=max_new_tokens, output_dir=output_dir)
+
+    if "error" in results:
+        click.echo(f"Error: {results['error']}", err=True)
+        return
+
+    print("\n=== Online Detection Summary ===")
+    print(f"Generated (snippet): {results['generated_text'][:200]}...")
+    print(f"Window probabilities: {results['window_probs']}")
+    print(f"Alert windows: {results['alert_windows']}")
+
+    # Print top sentences for alerted windows
+    if results['alert_windows']:
+        print("\nTop trigger-candidate sentences for alerted windows:")
+        for w in results['alert_windows']:
+            try:
+                tops = results['top_sentences_per_window'][w]
+            except Exception:
+                tops = []
+            print(f" Window {w}: {tops}")
+
+    if output_dir:
+        print(f"\nSaved results to: {output_dir}")
+
+
+
 @cli.command("verify-trigger")
 @click.option("--model", type=click.Choice(["gemma", "granite"]), required=True)
 @click.option("--trigger", type=str, required=True,
