@@ -258,14 +258,35 @@ def main():
         print("Error: Provide --detector-path or use --train-detector")
         sys.exit(1)
 
+    # Validate LoRA adapter path if provided
+    lora_path = args.lora_adapter
+    if lora_path:
+        adapter_config = Path(lora_path) / "adapter_config.json"
+        if not adapter_config.exists():
+            print(f"\nWarning: LoRA adapter not found at '{lora_path}'")
+            print(f"  Missing: {adapter_config}")
+            print(f"  Available checkpoints in outputs/lora_backdoor/:")
+            lora_dir = Path("outputs/lora_backdoor")
+            if lora_dir.exists():
+                for p in sorted(lora_dir.iterdir()):
+                    cfg = p / "adapter_config.json"
+                    status = "✓" if cfg.exists() else "✗"
+                    print(f"    {status} {p.name}")
+            else:
+                print(f"    (directory does not exist)")
+            print(f"\nContinuing without LoRA adapter (base model only)...")
+            lora_path = None
+
     # Load model
     print(f"\nLoading model: {args.model}")
-    if args.lora_adapter:
-        print(f"  with LoRA adapter: {args.lora_adapter}")
+    if lora_path:
+        print(f"  with LoRA adapter: {lora_path}")
+    else:
+        print(f"  (base model, no LoRA adapter)")
 
     model, tokenizer = load_model_and_tokenizer(
         args.model,
-        lora_adapter_path=args.lora_adapter,
+        lora_adapter_path=lora_path,
         force_output_attentions=True,
     )
 
