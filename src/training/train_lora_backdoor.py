@@ -195,8 +195,10 @@ def train_lora_backdoor(config: LoRABackdoorConfig):
     print("STARTING TRAINING (Native PyTorch)")
     print("=" * 60 + "\n")
     
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    model = model.to(device)
+    # Get the device from the model (already set by device_map="auto")
+    # Don't call model.to(device) when using device_map
+    device = next(model.parameters()).device
+    print(f"Using device: {device}")
     
     # Create data loaders
     from torch.utils.data import DataLoader
